@@ -9,61 +9,84 @@
 #include "../../bsp/uart/uart.h"
 #include "../../application/global_data.h"
 #include "../../dsp/calculation/calculation.h"
-// void printf_task(void)
-// {
-//     struct motor_device *gm6020_yaw = motor_get_device("GM6020_YAW");
-//     struct uart_device *uart1 = uart_get_device("uart1_dma");
-//
-//     if (uart1 == NULL ) return;
-//
-//     float position_rad = 0.0f;
-//     float target_pos = 0.0f;
-//
-//     for (;;)
-//     {
-//         if (gm6020_yaw == NULL) {(void)uart1->uart_printf(uart1,"GM6020_yaw未连接");}
-//         else
-//         {
-//             gm6020_yaw->get_status(gm6020_yaw, "POS", &position_rad);
-//             gm6020_yaw->get_status(gm6020_yaw, "TARGET_POS", &target_pos);
-//             (void)uart1->uart_printf(uart1,
-//             "GM6020_yaw: online=%u "
-//             "pos=%.3f rad "
-//             "target_pos=%.3f rad"
-//             "\r\n",
-//             motor_is_online(gm6020_yaw) ? 1U : 0U,
-//             position_rad,
-//             target_pos
-//             );
-//         }
-//
-//         osDelay(200U);
-//     }
-// }
+#include "../../bsp/pwm/pwm.h"
+#include <string.h>
 
+
+static volatile uint8_t flag = 0U;
+
+static void uart1_echo_callback(struct uart_device *device,
+                                const uint8_t *data,
+                                uint16_t length)
+{
+    if (data[0] == 0xAA)
+    {
+        (void)device->uart_printf(device,"charge\r\n");
+        pwm_set_pulse_us(PWM_CHANNEL_1,20000U);
+        pwm_set_pulse_us(PWM_CHANNEL_2,0U);
+        flag = 1;
+    }
+
+    else if (data[0] == 0xBB)
+    {
+        (void)device->uart_printf(device,"fire\r\n");
+        pwm_set_pulse_us(PWM_CHANNEL_1,0U);
+        pwm_set_pulse_us(PWM_CHANNEL_2,20000U);
+        flag = 2;
+    }
+
+    else if (data[0] == 0xCC)
+    {
+        (void)device->uart_printf(device,"lose_charge\r\n");
+        pwm_set_pulse_us(PWM_CHANNEL_1,0U);
+        pwm_set_pulse_us(PWM_CHANNEL_2,20000U);
+        flag = 3;
+    }
+
+    else if (data[0] == 0xDD)
+    {
+        (void)device->uart_printf(device,"stop\r\n");
+        pwm_set_pulse_us(PWM_CHANNEL_1,0U);
+        pwm_set_pulse_us(PWM_CHANNEL_2,0U);
+        flag = 4;
+    }
+}
 
 void printf_task(void)
 {
-    struct motor_device *gm6020_yaw = motor_get_device("GM6020_YAW");
-    struct uart_device *uart1 = uart_get_device("uart1_dma");
-    float position_rad = 0.0f;
-    float target_pos_rad = 0.0f;
+    struct uart_device *uart1;
 
-    if (uart1 == NULL) {
-        return;
-    }
+    uart1 = uart_get_device("uart1_dma");
+    uart1->uart_recv_callback = uart1_echo_callback;
 
     for (;;) {
-        if (gm6020_yaw != NULL) {
-            gm6020_yaw->get_status(gm6020_yaw, "POS", &position_rad);
-            gm6020_yaw->get_status(gm6020_yaw, "TARGET_POS", &target_pos_rad);
+        if (flag == 1)
+        {
+         osDelay(1);
+        }
+        else if (flag == 2)
+        {
+            osDelay(10);
+            pwm_set_pulse_us(PWM_CHANNEL_1,0U);
+            pwm_set_pulse_us(PWM_CHANNEL_2,0U);
+            flag = 4;
 
-            (void)uart1->uart_printf(uart1,
-                                     "%.4f,%.4f\r\n",
-                                     position_rad,
-                                     target_pos_rad);
+        }
+        else if (flag == 3)
+        {
+            osDelay(1);
+        }
+        else if (flag == 4)
+        {
+            osDelay(1);
+        }
+        else
+        {
+            osDelay(1);
         }
 
-        osDelay(20U);
+
+
+
     }
 }

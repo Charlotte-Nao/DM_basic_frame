@@ -35,6 +35,7 @@
 
 # include "../../bsp/LED/LED.h"
 # include "../../bsp/can/can.h"
+#include "../../bsp/pwm/pwm.h"
 # include "../../device/motor/motor.h"
 
 /* USER CODE END Includes */
@@ -134,7 +135,10 @@ int main(void)
   LED_init();
   can_init();
   Motor_System_PowerOn_Init();
-  LED_SKY_SET();
+  pwm_init();
+  pwm_power_enable();
+  pwm_set_pulse_us(PWM_CHANNEL_1,0U);
+  pwm_set_pulse_us(PWM_CHANNEL_2,0U);
 
 
   /* USER CODE END 2 */

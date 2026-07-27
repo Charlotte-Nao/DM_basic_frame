@@ -7,10 +7,10 @@
 
 void vacuum_task(void)
 {
-    Vacuum_System_PowerOn_Init();
+    // Vacuum_System_PowerOn_Init();
     for (;;)
     {
-        Vacuum_All_Update();
+        // Vacuum_All_Update();
         osDelay(10);
     }
 }
