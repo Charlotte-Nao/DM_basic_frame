@@ -237,15 +237,12 @@ void test_task(void)
                 last_query_tick = now;
             }
         }
-        if (uart10_state == UART10_MOTION_IDLE && uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE &&
-            target_pending != 0U) {
-            int command_length = machine_protocol_pack(pending_xyz,
-                MACHINE_PROTOCOL_DEFAULT_FEED_MM_PER_MIN, uart10_command, sizeof(uart10_command));
+        if (uart10_state == UART10_MOTION_IDLE && uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE && target_pending != 0U) {
+            int command_length = machine_protocol_pack(pending_xyz,MACHINE_PROTOCOL_DEFAULT_FEED_MM_PER_MIN, uart10_command, sizeof(uart10_command));
             if (command_length <= 0) {
                 uart10_state = UART10_MOTION_FAULT;
                 LED_RED_SET();
-            } else if (uart10->uart_send_bytes(uart10, (const uint8_t *)uart10_command,
-                                               (uint16_t)command_length) == 0) {
+            } else if (uart10->uart_send_bytes(uart10, (const uint8_t *)uart10_command,(uint16_t)command_length) == 0) {
                 target_pending = 0U;
                 command_sent_tick = now;
                 uart10_state = UART10_MOTION_WAIT_ACK;

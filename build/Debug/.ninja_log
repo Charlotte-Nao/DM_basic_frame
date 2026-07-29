@@ -185,3 +185,7 @@
 8	78	1785329538742430700	CMakeFiles/DM.dir/protocol/machine_protocal.c.obj	f89b6511378906c
 7	78	1785329538741430800	CMakeFiles/DM.dir/task/test_task/test_task.c.obj	ce935f719d39e103
 78	399	1785329538812428300	DM.elf	a4f52ad41e2f8c9c
+11	91	1785333894215945900	CMakeFiles/DM.dir/task/test_task/test_task.c.obj	ce935f719d39e103
+91	409	1785333894295945900	DM.elf	a4f52ad41e2f8c9c
+8	196	1785334228154911000	CMakeFiles/DM.dir/Core/Src/main.c.obj	7b70f89a97029fe4
+196	518	1785334228342912000	DM.elf	a4f52ad41e2f8c9c
