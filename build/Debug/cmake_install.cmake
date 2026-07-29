@@ -1,4 +1,4 @@
-# Install script for directory: /media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/2024_e/DM-MC
+# Install script for directory: /media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -39,13 +39,13 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/2024_e/DM-MC/build/Debug/cmake/stm32cubemx/cmake_install.cmake")
+  include("/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/build/Debug/cmake/stm32cubemx/cmake_install.cmake")
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/2024_e/DM-MC/build/Debug/install_local_manifest.txt"
+  file(WRITE "/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/build/Debug/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
 if(CMAKE_INSTALL_COMPONENT)
@@ -61,6 +61,6 @@ else()
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/2024_e/DM-MC/build/Debug/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/build/Debug/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

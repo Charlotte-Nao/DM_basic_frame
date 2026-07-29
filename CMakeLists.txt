@@ -92,6 +92,8 @@ add_executable(${CMAKE_PROJECT_NAME}
         bsp/usb/usb.h
         protocol/protocol.c
         protocol/protocol.h
+        protocol/machine_protocal.c
+        protocol/machine_protocal.h
 )
 
 # Add STM32CubeMX generated sources

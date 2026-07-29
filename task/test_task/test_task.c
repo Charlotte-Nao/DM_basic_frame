@@ -1,157 +1,134 @@
 /**
-* @file test_task.c
- * @brief YB-SD15M movement test.
+ * @file test_task.c
+ * @brief Aim pose serial forwarding test.
  */
 
 #include "test_task.h"
 
+#include <stdint.h>
 #include <string.h>
 
 #include "cmsis_os2.h"
-#include "../../device/YB_SD15M/YB_SD15M.h"
 #include "../../device/vacuum/vacuum.h"
-#include "../../dsp/calculation/calculation.h"
 #include "../../application/global_data.h"
 #include "../../bsp/LED/LED.h"
-#include "../../bsp/usb/usb.h"
+#include "../../bsp/uart/uart.h"
+#include "../../protocol/protocol.h"
+#include "../../protocol/machine_protocal.h"
 
-static int16_t servo_angle_to_command(float angle)
+static int uart_is_port(const struct uart_device *uart, const char *port_name)
 {
-    if (angle >= 0.0f) {
-        return (int16_t)(angle + 0.5f);
-    }
-    return (int16_t)(angle - 0.5f);
-}
+    size_t port_name_length;
 
-static void set_all_target(struct yb_sd15m_device *servo_1,
-                           struct yb_sd15m_device *servo_2,
-                           struct yb_sd15m_device *servo_3,
-                           struct yb_sd15m_device *servo_4,
-                           const float servo_angle[4],
-                           int move_time_ms)
-{
-    if (servo_1 == NULL || servo_2 == NULL || servo_3 == NULL || servo_4 == NULL ||
-        servo_angle == NULL) {
-        return;
+    if (uart == NULL || uart->name == NULL || port_name == NULL) {
+        return 0;
     }
 
-    yb_sd15m_set_target(servo_1, servo_angle_to_command(servo_angle[0]), move_time_ms);
-    yb_sd15m_set_target(servo_2, servo_angle_to_command(servo_angle[1]), move_time_ms);
-    yb_sd15m_set_target(servo_3, servo_angle_to_command(servo_angle[2]), move_time_ms);
-    yb_sd15m_set_target(servo_4, servo_angle_to_command(servo_angle[3]), move_time_ms);
+    port_name_length = strlen(port_name);
+
+    return strncmp(uart->name, port_name, port_name_length) == 0 &&
+           uart->name[port_name_length] == '_';
 }
 
-static void pick_chess(struct vacuum_device *pump, struct vacuum_device *valve)
+static int16_t roll_to_protocol_phi(float roll)
 {
-    valve->disable(valve);
-    pump->enable(pump);
-}
+    float raw_phi = roll * 10.0f;
 
-static void put_chess(struct vacuum_device *pump, struct vacuum_device *valve)
-{
-    valve->enable(valve);
-    pump->disable(pump);
-}
-
-static void move_a_to_b(struct yb_sd15m_device *servo_1,
-                        struct yb_sd15m_device *servo_2,
-                        struct yb_sd15m_device *servo_3,
-                        struct yb_sd15m_device *servo_4,
-                        const float a_pose[4],
-                        const float b_pose[4])
-{
-    float a_above_pose[4];
-    float b_above_pose[4];
-    float servo_angle[4] = {0};
-
-    if (a_pose == NULL || b_pose == NULL) {
-        return;
+    if (raw_phi >= 0.0f) {
+        return (int16_t)(raw_phi + 0.5f);
     }
 
-    memcpy(a_above_pose, a_pose, sizeof(a_above_pose));
-    memcpy(b_above_pose, b_pose, sizeof(b_above_pose));
-    if (a_above_pose[2] < 120 ){   a_above_pose[2] += 30.0f;}
-    if (b_above_pose[2] < 120 ){   b_above_pose[2] += 30.0f;}
+    return (int16_t)(raw_phi - 0.5f);
+}
 
-    Four_degree_of_freedom_calculation(&arm, a_above_pose, servo_angle);
-    set_all_target(servo_1, servo_2, servo_3, servo_4, servo_angle, 1000U);
-    osDelay(1000U);
+static int set_seria_target(struct uart_device *uart, const float aim_pose[5])
+{
+    uint8_t protocol_frame[PROTOCOL_FRAME_SIZE];
+    uint8_t machine_aim[MACHINE_PROTOCAL_FRAME_SIZE];
+    struct protocol_data protocol_target;
+    struct uart_device *uart1;
+    struct uart_device *uart10;
+    uart1 = uart_get_device("uart1_dma");
+    uart10 = uart_get_device("uart10_dma");
 
-    Four_degree_of_freedom_calculation(&arm, b_above_pose, servo_angle);
-    set_all_target(servo_1, servo_2, servo_3, servo_4, servo_angle, 1000U);
-    osDelay(1000U);
+    if (uart == NULL || aim_pose == NULL) {
+        return -1;
+    }
+    if (uart10 == NULL) {
+        return -1;
+    }
 
-    Four_degree_of_freedom_calculation(&arm, b_pose, servo_angle);
-    set_all_target(servo_1, servo_2, servo_3, servo_4, servo_angle, 1000U);
-    osDelay(2000U);
+    if (uart_is_port(uart, "uart1")) {
+        protocol_target.x = aim_pose[0];
+        protocol_target.y = aim_pose[1];
+        protocol_target.z = aim_pose[2];
+        protocol_target.roll = roll_to_protocol_phi(aim_pose[3]);
+        protocol_target.action = aim_pose[4];
+
+        if (protocol_pack(&protocol_target, protocol_frame) != 0) {
+            LED_RED_SET();
+            return -1;
+        }
+
+        return uart1->uart_send_bytes(uart1, protocol_frame, PROTOCOL_FRAME_SIZE);
+    }
+    else if (uart_is_port(uart, "uart10")) {
+
+        if (machine_protocol_pack(aim_pose, machine_aim) != 0) {
+            LED_RED_SET();
+            return -1;
+        }
+
+        return uart10->uart_send_bytes(uart10, machine_aim, MACHINE_PROTOCAL_FRAME_SIZE);
+    }
+
+    return -1;
 }
 
 void test_task(void)
 {
-    struct usb_device *usb;
-    struct yb_sd15m_device *servo_1;
-    struct yb_sd15m_device *servo_2;
-    struct yb_sd15m_device *servo_3;
-    struct yb_sd15m_device *servo_4;
-    struct vacuum_device *pump = vacuum_get_device("VACUUM_PUMP");
-    struct vacuum_device *valve = vacuum_get_device("VACUUM_VALVE");
+    struct uart_device *uart1;
 
-    usb = usb_get_device("usb_cdc");
-    servo_1 = yb_sd15m_get_device("YB_SD15M_1");
-    servo_2 = yb_sd15m_get_device("YB_SD15M_2");
-    servo_3 = yb_sd15m_get_device("YB_SD15M_3");
-    servo_4 = yb_sd15m_get_device("YB_SD15M_4");
+    uart1 = uart_get_device("uart1_dma");
 
-    while (servo_1 == NULL || servo_2 == NULL || servo_3 == NULL || servo_4 == NULL)
+    while (uart1 == NULL)
     {
-        servo_1 = yb_sd15m_get_device("YB_SD15M_1");
-        servo_2 = yb_sd15m_get_device("YB_SD15M_2");
-        servo_3 = yb_sd15m_get_device("YB_SD15M_3");
-        servo_4 = yb_sd15m_get_device("YB_SD15M_4");
+        uart1 = uart_get_device("uart1_dma");
         osDelay(1000U);
     }
 
-    float servo_angle[4] = {0};
-    float aim_pose_array[4] = {0};
-    uint8_t last_action = 0;
-    float last_aim_pose_array[4] = {0};
+    float aim_pose_array[5] = {0};
+    float last_aim_pose_array[5] = {0};
 
     for (;;) {
         aim_pose_array[0] = aim_pose.x;
         aim_pose_array[1] = aim_pose.y;
         aim_pose_array[2] = aim_pose.z;
-        aim_pose_array[3] = aim_pose.phi;
+        aim_pose_array[3] = aim_pose.roll;
+        aim_pose_array[4] = aim_pose.action;
 
         if (memcmp(aim_pose_array,last_aim_pose_array,sizeof(aim_pose_array))!= 0)
         {
-            if (Four_degree_of_freedom_calculation(&arm, aim_pose_array, servo_angle))
+            if (set_seria_target(uart1, aim_pose_array) == 0)
             {
-                set_all_target(servo_1, servo_2, servo_3, servo_4,servo_angle, 1000U);
                 LED_GREEN_SET();
             }
             else
             {
-                usb->usb_printf(usb,"1");
+                LED_RED_SET();
+            }
+            osDelay(1U);
+
+            if (set_seria_target(uart1, aim_pose_array) == 0)
+            {
+                LED_GREEN_SET();
+            }
+            else
+            {
                 LED_RED_SET();
             }
 
         }
-
-        if (aim_pose.action == 1 && last_action != 1)
-        {
-            pick_chess(pump,valve);
-        }
-        else if (aim_pose.action == 2 && last_action != 2)
-        {
-            put_chess(pump,valve);
-        }
-        else if (aim_pose.action == 3)
-        {
-            valve->disable(valve);
-            pump->disable(pump);
-        }
-
-        last_action = aim_pose.action;
         memcpy(last_aim_pose_array,aim_pose_array,sizeof(aim_pose_array));
 
         osDelay(1);

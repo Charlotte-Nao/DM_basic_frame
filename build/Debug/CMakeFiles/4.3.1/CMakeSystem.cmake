@@ -1,9 +1,9 @@
-set(CMAKE_HOST_SYSTEM "Linux-6.8.0-124-generic")
+set(CMAKE_HOST_SYSTEM "Linux-6.8.0-136-generic")
 set(CMAKE_HOST_SYSTEM_NAME "Linux")
-set(CMAKE_HOST_SYSTEM_VERSION "6.8.0-124-generic")
+set(CMAKE_HOST_SYSTEM_VERSION "6.8.0-136-generic")
 set(CMAKE_HOST_SYSTEM_PROCESSOR "x86_64")
 
-include("/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/2024_e/DM-MC/cmake/gcc-arm-none-eabi.cmake")
+include("/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/cmake/gcc-arm-none-eabi.cmake")
 
 set(CMAKE_SYSTEM "Generic")
 set(CMAKE_SYSTEM_NAME "Generic")

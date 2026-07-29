@@ -22,7 +22,7 @@ typedef struct host_data {
     float x;
     float y;
     float z;
-    float phi;
+    float roll;
     uint8_t action;
 } aim_pose_t;
 
