@@ -102,3 +102,9 @@
 3	28	1785311091123739800	CMakeFiles/DM.dir/protocol/protocol.c.obj	ec0a7a0a2abce816
 4	148	1785311091124739800	CMakeFiles/DM.dir/Core/Src/freertos.c.obj	c8407399e2bdfa28
 148	357	1785311091268745500	DM.elf	a4f52ad41e2f8c9c
+4	198	1785313990704210600	CMakeFiles/DM.dir/bsp/LED/LED.c.obj	6cf67c899cb1b183
+4	41	1785314319495878600	CMakeFiles/DM.dir/task/test_task/test_task.c.obj	ce935f719d39e103
+3	149	1785314319494878600	CMakeFiles/DM.dir/bsp/LED/LED.c.obj	6cf67c899cb1b183
+2	30	1785314457152481900	CMakeFiles/DM.dir/task/test_task/test_task.c.obj	ce935f719d39e103
+2	145	1785314457152481900	CMakeFiles/DM.dir/Core/Src/main.c.obj	7b70f89a97029fe4
+145	432	1785314457295482600	DM.elf	a4f52ad41e2f8c9c

@@ -21,4 +21,7 @@
 /media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/bsp/LED/LED.c:251:6:LED_BLUE_TOGGLE	8	static
 /media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/bsp/LED/LED.c:263:6:LED_SKY_SET	8	static
 /media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/bsp/LED/LED.c:268:6:LED_SKY_RESET_TOGGLE	8	static
-/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/bsp/LED/LED.c:278:6:LED_off	8	static
+/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/bsp/LED/LED.c:278:6:LED_YELLOW_SET	8	static
+/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/bsp/LED/LED.c:283:6:LED_PURPLE_SET	8	static
+/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/bsp/LED/LED.c:288:6:LED_PINK_SET	8	static
+/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/bsp/LED/LED.c:293:6:LED_off	8	static

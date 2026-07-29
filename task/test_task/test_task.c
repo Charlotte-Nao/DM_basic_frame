@@ -51,10 +51,8 @@ static int set_seria_target(struct uart_device *uart, const float aim_pose[5])
     uart1 = uart_get_device("uart1_dma");
     uart10 = uart_get_device("uart10_dma");
 
-    if (uart == NULL || aim_pose == NULL) {
-        return -1;
-    }
-    if (uart10 == NULL) {
+    if (uart == NULL || aim_pose == NULL || uart10 == NULL) {
+        LED_YELLOW_SET();
         return -1;
     }
 
@@ -72,7 +70,7 @@ static int set_seria_target(struct uart_device *uart, const float aim_pose[5])
 
         return uart1->uart_send_bytes(uart1, protocol_frame, PROTOCOL_FRAME_SIZE);
     }
-    else if (uart_is_port(uart, "uart10")) {
+    if (uart_is_port(uart, "uart10")) {
 
         if (machine_protocol_pack(aim_pose, machine_aim) != 0) {
             LED_RED_SET();
@@ -88,12 +86,21 @@ static int set_seria_target(struct uart_device *uart, const float aim_pose[5])
 void test_task(void)
 {
     struct uart_device *uart1;
+    struct uart_device *uart10;
 
     uart1 = uart_get_device("uart1_dma");
+    uart10 = uart_get_device("uart10_dma");
 
     while (uart1 == NULL)
     {
         uart1 = uart_get_device("uart1_dma");
+        LED_YELLOW_SET();
+        osDelay(1000U);
+    }
+    while (uart10 == NULL)
+    {
+        uart10 = uart_get_device("uart10_dma");
+        LED_YELLOW_SET();
         osDelay(1000U);
     }
 
@@ -111,17 +118,17 @@ void test_task(void)
         {
             if (set_seria_target(uart1, aim_pose_array) == 0)
             {
-                LED_GREEN_SET();
+                LED_YELLOW_SET();
             }
             else
             {
                 LED_RED_SET();
             }
-            osDelay(1U);
+            osDelay(10U);
 
-            if (set_seria_target(uart1, aim_pose_array) == 0)
+            if (set_seria_target(uart10, aim_pose_array) == 0)
             {
-                LED_GREEN_SET();
+                LED_YELLOW_SET();
             }
             else
             {
@@ -131,6 +138,6 @@ void test_task(void)
         }
         memcpy(last_aim_pose_array,aim_pose_array,sizeof(aim_pose_array));
 
-        osDelay(1);
+        osDelay(10);
     }
 }
