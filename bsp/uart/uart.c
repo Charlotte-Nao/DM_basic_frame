@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "usart.h"
+#include "../LED/LED.h"
 
 #define UART_DMA_RX_BUFFER_SIZE 256U
 #define UART_DMA_TX_BUFFER_SIZE 256U
@@ -438,6 +439,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *handle)
     if (device->uart_send_callback != NULL) {
         device->uart_send_callback(device);
     }
+    // LED_PURPLE_SET();
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *handle)

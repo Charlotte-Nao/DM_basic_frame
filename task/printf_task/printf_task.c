@@ -124,18 +124,18 @@ void printf_task(void)
 
             Four_degree_of_freedom_positive_calculation(&arm, servo_target, servo_pose);
 
-            (void)uart1->uart_printf(uart1,
-            "YB_SD15M: angle1=%d angle2=%d angle3=%d angle4=%d "
-            "x=%.2f y=%.2f z=%.2f phi=%.2f\r\n",
-            servo_target[0],
-            servo_target[1],
-            servo_target[2],
-            servo_target[3],
-            servo_pose[0],
-            servo_pose[1],
-            servo_pose[2],
-            servo_pose[3]
-            );
+            // (void)uart1->uart_printf(uart1,
+            // "YB_SD15M: angle1=%d angle2=%d angle3=%d angle4=%d "
+            // "x=%.2f y=%.2f z=%.2f phi=%.2f\r\n",
+            // servo_target[0],
+            // servo_target[1],
+            // servo_target[2],
+            // servo_target[3],
+            // servo_pose[0],
+            // servo_pose[1],
+            // servo_pose[2],
+            // servo_pose[3]
+            // );
         }
 
         osDelay(200U);

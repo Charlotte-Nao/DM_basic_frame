@@ -82,6 +82,7 @@ static int set_seria_target(struct uart_device *uart, const float aim_pose[5])
             LED_RED_SET();
             return -1;
         }
+        // LED_SKY_SET();
         return uart1->uart_send_bytes(uart1, protocol_frame, PROTOCOL_FRAME_SIZE);
     }
     return -1;
@@ -205,7 +206,7 @@ void test_task(void)
         aim_pose_array[4] = aim_pose.action;
         if (memcmp(aim_pose_array, last_aim_pose_array, sizeof(aim_pose_array)) != 0) {
             if (set_seria_target(uart1, aim_pose_array) == 0) {
-                LED_YELLOW_SET();
+                LED_SKY_SET();
             } else {
                 LED_RED_SET();
             }
@@ -246,7 +247,7 @@ void test_task(void)
                 target_pending = 0U;
                 command_sent_tick = now;
                 uart10_state = UART10_MOTION_WAIT_ACK;
-                LED_YELLOW_SET();
+                LED_PURPLE_SET();
             }
         }
         osDelay(10U);

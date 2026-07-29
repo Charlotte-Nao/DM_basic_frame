@@ -8,6 +8,7 @@
 #include "../../bsp/usb/usb.h"
 #include "../../protocol/protocol.h"
 #include"../../application/global_data.h"
+#include "../../bsp/LED/LED.h"
 
 void usb_task(void)
 {
@@ -35,6 +36,7 @@ void usb_task(void)
                 aim_pose.z = received_data.z;
                 aim_pose.roll = (float)received_data.roll / 10.0f;
                 aim_pose.action= received_data.action;
+                // LED_GREEN_SET();
             }
         }
         osDelay(1U);

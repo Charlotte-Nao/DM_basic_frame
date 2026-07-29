@@ -1,8 +1,8 @@
 /media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:43:12:uart_is_port	24	static
 /media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:55:16:roll_to_protocol_phi	24	static
 /media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:65:12:set_seria_target	64	static
-/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:90:13:uart10_receive_callback	32	static,ignoring_inline_asm
-/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:112:12:uart10_receive_byte	24	static,ignoring_inline_asm
-/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:128:13:uart10_handle_event	24	static
-/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:163:12:uart10_send_status_query	16	static
-/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:169:6:test_task	120	static
+/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:91:13:uart10_receive_callback	32	static,ignoring_inline_asm
+/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:113:12:uart10_receive_byte	24	static,ignoring_inline_asm
+/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:129:13:uart10_handle_event	24	static
+/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:164:12:uart10_send_status_query	16	static
+/media/charlotte/E2A28D2BA28D04EF/linux共享分区/电赛/basic_frame/task/test_task/test_task.c:170:6:test_task	120	static

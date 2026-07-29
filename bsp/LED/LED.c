@@ -282,7 +282,7 @@ void LED_YELLOW_SET(void)
 
 void LED_PURPLE_SET(void)
 {
-    LED_SET_RGB(0x99U, 0x99U, 0xFFU);
+    LED_SET_RGB(0x99U, 0x33U, 0xFFU);
 }
 
 void LED_PINK_SET(void)
