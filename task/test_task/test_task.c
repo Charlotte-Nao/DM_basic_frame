@@ -165,7 +165,9 @@ static int uart10_send_status_query(struct uart_device *uart10)
 {
     static const uint8_t query = (uint8_t)'?';
     return uart10->uart_send_bytes(uart10, &query, 1U);
+
 }
+
 
 void test_task(void)
 {
@@ -234,9 +236,9 @@ void test_task(void)
             LED_RED_SET();
         }
         if ((uart10_state == UART10_MOTION_WAIT_READY || uart10_state == UART10_MOTION_WAIT_IDLE || uart10_state == UART10_MOTION_FAULT) && (uint32_t)(now - last_query_tick) >= UART10_STATUS_QUERY_INTERVAL_MS) {
-            if (uart10_send_status_query(uart10) == 0) {
-                last_query_tick = now;
-            }
+            // if (uart10_send_status_query(uart10) == 0) {
+            //     last_query_tick = now;
+            // }
         }
         if (uart10_state == UART10_MOTION_IDLE && uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE && target_pending != 0U) {
             int command_length = machine_protocol_pack(pending_xyz,MACHINE_PROTOCOL_DEFAULT_FEED_MM_PER_MIN, uart10_command, sizeof(uart10_command));
