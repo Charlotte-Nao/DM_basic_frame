@@ -1,6 +1,6 @@
 /**
  * @file motor.c
- * @brief GM6020 and DM4310 static motor-device implementations.
+ * @brief GM6020, DM3507 and DM4310 static motor-device implementations.
  */
 
 #include "motor.h"
@@ -19,6 +19,18 @@
 #define GM6020_ENCODER_RESOLUTION         8192.0f
 #define GM6020_OUTPUT_LIMIT               25000.0f
 #define GM6020_SPEED_LIMIT_RPM            320.0f
+
+#define DM3507_MASTER_ID                  0x002U
+#define DM3507_COMMAND_ID                 0x002U
+#define DM3507_P_MAX                      12.566f
+#define DM3507_V_MAX                      100.0f
+#define DM3507_T_MAX                      5.0f
+#define DM3507_TORQUE_LIMIT_NM            3.0f
+#define DM3507_ERR_ENABLED                0x1U
+#define DM3507_ERR_FAULT_MIN              0x2U
+#define DM3507_ERR_FAULT_MAX              0xEU
+#define DM3507_CLEAR_RETRY_MS             50U
+#define DM3507_ENABLE_RETRY_MS            20U
 
 #define DM4310_COMMAND_ID                 CAN_J4310_PITCH_ID
 #define DM4310_P_MAX                      12.5f
@@ -43,6 +55,11 @@ typedef struct {
     pid_t velocity_pid;
 } gm6020_pid_config_t;
 
+typedef struct {
+    pid_t position_pid;
+    pid_t velocity_pid;
+} dm3507_pid_config_t;
+
 /* ------------------------------ 电机结构体封装 ---------------------------------- */
 typedef struct {
     const gm6020_pid_config_t *pid_config;
@@ -62,6 +79,31 @@ typedef struct {
     uint32_t last_update_tick;
     uint8_t control_slot;               /* GM6020 ID: 1..4 in group 0x1FF. */
 } gm6020_data_t;
+
+typedef struct {
+    const dm3507_pid_config_t *pid_config;
+    pid_t position_pid;
+    pid_t velocity_pid;
+    float target_position_rad;
+    float target_velocity_rad_s;
+    float position_rad;
+    float velocity_rad_s;
+    float torque_nm;
+    float output_torque_nm;
+    float p_max;
+    float v_max;
+    float t_max;
+    uint8_t can_id;
+    uint8_t error;
+    uint8_t mos_temperature;
+    uint8_t rotor_temperature;
+    uint8_t enable_requested;
+    uint8_t enabled;
+    uint8_t hold_position_pending;
+    uint32_t last_update_tick;
+    uint32_t last_clear_cmd_tick;
+    uint32_t last_enable_cmd_tick;
+} dm3507_data_t;
 
 typedef struct {
     float target_position_rad;
@@ -137,6 +179,12 @@ static uint16_t float_to_uint(float value, float minimum, float maximum, uint16_
     value = clamp_float(value, minimum, maximum);
     scaled = (value - minimum) * (float)maximum_integer / (maximum - minimum);
     return (uint16_t)scaled;
+}
+
+static float uint_to_float(uint32_t value, float minimum, float maximum, uint16_t bits)
+{
+    uint32_t maximum_integer = (1UL << bits) - 1UL;
+    return (float)value * (maximum - minimum) / (float)maximum_integer + minimum;
 }
 
 static void gm6020_send_group(FDCAN_HandleTypeDef *can_handle);
@@ -322,6 +370,208 @@ static void gm6020_set_para(const struct motor_device *motor, const char *which,
                             const void *value)
 {
     gm6020_data_t *data;
+    if (motor == NULL || motor->motor_data == NULL || which == NULL || value == NULL) { return; }
+    data = motor->motor_data;
+    if (strcmp(which, "POS_KP") == 0) { data->position_pid.kp = *(const float *)value; }
+    else if (strcmp(which, "VEL_KP") == 0) { data->velocity_pid.kp = *(const float *)value; }
+    else if (strcmp(which, "VEL_KI") == 0) { data->velocity_pid.ki = *(const float *)value; }
+    else if (strcmp(which, "VEL_KD") == 0) { data->velocity_pid.kd = *(const float *)value; }
+}
+
+/* ------------------------------ DM3507 ---------------------------------- */
+
+static void dm3507_send_special(struct motor_device *motor, uint8_t command)
+{
+    uint8_t frame[8] = {0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU, command};
+    if (motor == NULL || motor->motor_data == NULL) { return; }
+    motor_send_standard(motor->motor_can_handle, DM3507_COMMAND_ID, frame);
+}
+
+static void dm3507_init(struct motor_device *motor, uint32_t motor_id, FDCAN_HandleTypeDef *can_handle, int para_num, ...)
+{
+    dm3507_data_t *data;
+    const dm3507_pid_config_t *pid_config;
+    if (motor == NULL || motor->motor_data == NULL || can_handle == NULL) { return; }
+    data = motor->motor_data;
+    pid_config = data->pid_config;
+    if (pid_config == NULL) { return; }
+    memset(data, 0, sizeof(*data));
+    data->pid_config = pid_config;
+    motor->motor_id = motor_id;
+    motor->motor_can_handle = can_handle;
+    data->p_max = DM3507_P_MAX;
+    data->v_max = DM3507_V_MAX;
+    data->t_max = DM3507_T_MAX;
+    data->position_pid = pid_config->position_pid;
+    data->velocity_pid = pid_config->velocity_pid;
+    pid_reset(&data->position_pid);
+    pid_reset(&data->velocity_pid);
+    (void)para_num;
+}
+
+static void dm3507_feedback_calculate(const struct motor_device *motor, const uint8_t frame[8])
+{
+    dm3507_data_t *data;
+    uint16_t position;
+    uint16_t velocity;
+    uint16_t torque;
+    if (motor == NULL || motor->motor_data == NULL || frame == NULL) { return; }
+    data = motor->motor_data;
+    data->can_id = frame[0] & 0x0FU;
+    data->error = frame[0] >> 4;
+    data->enabled = (data->error == DM3507_ERR_ENABLED) ? 1U : 0U;
+    position = (uint16_t)(((uint16_t)frame[1] << 8) | frame[2]);
+    velocity = (uint16_t)(((uint16_t)frame[3] << 4) | (frame[4] >> 4));
+    torque = (uint16_t)(((uint16_t)(frame[4] & 0x0FU) << 8) | frame[5]);
+    data->position_rad = uint_to_float(position, -data->p_max, data->p_max, 16U);
+    data->velocity_rad_s = uint_to_float(velocity, -data->v_max, data->v_max, 12U);
+    data->torque_nm = uint_to_float(torque, -data->t_max, data->t_max, 12U);
+    data->mos_temperature = frame[6];
+    data->rotor_temperature = frame[7];
+}
+
+static void dm3507_send_ctrl_cmd(struct motor_device *motor)
+{
+    dm3507_data_t *data;
+    uint16_t position;
+    uint16_t velocity;
+    uint16_t torque;
+    uint8_t frame[8];
+    if (motor == NULL || motor->motor_data == NULL) { return; }
+    data = motor->motor_data;
+    if (data->enable_requested == 0U || data->enabled == 0U) { return; }
+    position = float_to_uint(0.0f, -data->p_max, data->p_max, 16U);
+    velocity = float_to_uint(0.0f, -data->v_max, data->v_max, 12U);
+    torque = float_to_uint(clamp_float(data->output_torque_nm, -DM3507_TORQUE_LIMIT_NM, DM3507_TORQUE_LIMIT_NM), -data->t_max, data->t_max, 12U);
+    frame[0] = (uint8_t)(position >> 8);
+    frame[1] = (uint8_t)position;
+    frame[2] = (uint8_t)(velocity >> 4);
+    frame[3] = (uint8_t)(velocity << 4);
+    frame[4] = 0U;
+    frame[5] = 0U;
+    frame[6] = (uint8_t)(torque >> 8);
+    frame[7] = (uint8_t)torque;
+    motor_send_standard(motor->motor_can_handle, DM3507_COMMAND_ID, frame);
+}
+
+static void dm3507_enable(struct motor_device *motor)
+{
+    dm3507_data_t *data;
+    if (motor == NULL || motor->motor_data == NULL) { return; }
+    data = motor->motor_data;
+    data->enable_requested = 1U;
+    data->enabled = 0U;
+    data->hold_position_pending = motor_is_online(motor) ? 0U : 1U;
+    if (data->hold_position_pending == 0U) { data->target_position_rad = data->position_rad; }
+    data->target_velocity_rad_s = 0.0f;
+    data->output_torque_nm = 0.0f;
+    pid_reset(&data->position_pid);
+    pid_reset(&data->velocity_pid);
+    data->last_update_tick = 0U;
+    dm3507_send_special(motor, 0xFBU);
+    dm3507_send_special(motor, 0xFCU);
+    data->last_clear_cmd_tick = HAL_GetTick();
+    data->last_enable_cmd_tick = data->last_clear_cmd_tick;
+}
+
+static void dm3507_disable(struct motor_device *motor)
+{
+    dm3507_data_t *data;
+    if (motor == NULL || motor->motor_data == NULL) { return; }
+    data = motor->motor_data;
+    data->enable_requested = 0U;
+    data->enabled = 0U;
+    data->hold_position_pending = 0U;
+    data->target_position_rad = data->position_rad;
+    data->target_velocity_rad_s = 0.0f;
+    data->output_torque_nm = 0.0f;
+    pid_reset(&data->position_pid);
+    pid_reset(&data->velocity_pid);
+    data->last_update_tick = 0U;
+    dm3507_send_special(motor, 0xFDU);
+}
+
+static void dm3507_update(struct motor_device *motor)
+{
+    dm3507_data_t *data;
+    float position_error;
+    float desired_velocity;
+    float dt;
+    uint32_t now;
+    if (motor == NULL || motor->motor_data == NULL) { return; }
+    data = motor->motor_data;
+    if (data->enable_requested == 0U) { return; }
+    if (motor->last_rx_tick == 0U || (HAL_GetTick() - motor->last_rx_tick) > MOTOR_OFFLINE_TIMEOUT_MS) {
+        data->enabled = 0U;
+        data->output_torque_nm = 0.0f;
+        pid_reset(&data->position_pid);
+        pid_reset(&data->velocity_pid);
+        data->last_update_tick = 0U;
+        return;
+    }
+    now = HAL_GetTick();
+    if (data->hold_position_pending != 0U) {
+        data->target_position_rad = data->position_rad;
+        data->target_velocity_rad_s = 0.0f;
+        data->output_torque_nm = 0.0f;
+        pid_reset(&data->position_pid);
+        pid_reset(&data->velocity_pid);
+        data->last_update_tick = 0U;
+        data->hold_position_pending = 0U;
+        return;
+    }
+    if (data->error >= DM3507_ERR_FAULT_MIN && data->error <= DM3507_ERR_FAULT_MAX) {
+        data->output_torque_nm = 0.0f;
+        if ((uint32_t)(now - data->last_clear_cmd_tick) >= DM3507_CLEAR_RETRY_MS) { dm3507_send_special(motor, 0xFBU); data->last_clear_cmd_tick = now; }
+        return;
+    }
+    if (data->error != DM3507_ERR_ENABLED) {
+        data->output_torque_nm = 0.0f;
+        if ((uint32_t)(now - data->last_enable_cmd_tick) >= DM3507_ENABLE_RETRY_MS) { dm3507_send_special(motor, 0xFCU); data->last_enable_cmd_tick = now; }
+        return;
+    }
+    if (data->last_update_tick == 0U) { dt = MOTOR_CONTROL_DT_DEFAULT_S; }
+    else { dt = clamp_float((float)(now - data->last_update_tick) * 0.001f, 0.0001f, 0.020f); }
+    data->last_update_tick = now;
+    position_error = data->target_position_rad - data->position_rad;
+    while (position_error > 3.14159265358979323846f) { position_error -= MOTOR_TWO_PI; }
+    while (position_error < -3.14159265358979323846f) { position_error += MOTOR_TWO_PI; }
+    desired_velocity = pid_update(&data->position_pid, position_error, 0.0f, dt) + data->target_velocity_rad_s;
+    desired_velocity = clamp_float(desired_velocity, -DM3507_V_MAX, DM3507_V_MAX);
+    data->output_torque_nm = pid_update(&data->velocity_pid, desired_velocity, data->velocity_rad_s, dt);
+    dm3507_send_ctrl_cmd(motor);
+}
+
+static void dm3507_set_target(const struct motor_device *motor, int para_num, ...)
+{
+    dm3507_data_t *data;
+    va_list arguments;
+    if (motor == NULL || motor->motor_data == NULL) { return; }
+    data = motor->motor_data;
+    va_start(arguments, para_num);
+    if (para_num >= 1) { data->target_position_rad = (float)va_arg(arguments, double); }
+    if (para_num >= 2) { data->target_velocity_rad_s = (float)va_arg(arguments, double); }
+    va_end(arguments);
+}
+
+static void dm3507_get_status(const struct motor_device *motor, const char *which, void *value)
+{
+    dm3507_data_t *data;
+    if (motor == NULL || motor->motor_data == NULL || which == NULL || value == NULL) { return; }
+    data = motor->motor_data;
+    if (strcmp(which, "POS") == 0) { *(float *)value = data->position_rad; }
+    else if (strcmp(which, "VEL") == 0) { *(float *)value = data->velocity_rad_s; }
+    else if (strcmp(which, "TORQUE") == 0) { *(float *)value = data->torque_nm; }
+    else if (strcmp(which, "TEMP") == 0) { *(uint8_t *)value = data->rotor_temperature; }
+    else if (strcmp(which, "MOS_TEMP") == 0) { *(uint8_t *)value = data->mos_temperature; }
+    else if (strcmp(which, "ERR") == 0) { *(uint8_t *)value = data->error; }
+    else if (strcmp(which, "ID") == 0) { *(uint8_t *)value = data->can_id; }
+    else if (strcmp(which, "TARGET") == 0) { *(float *)value = data->target_position_rad; }
+}
+
+static void dm3507_set_para(const struct motor_device *motor, const char *which, const void *value)
+{
+    dm3507_data_t *data;
     if (motor == NULL || motor->motor_data == NULL || which == NULL || value == NULL) { return; }
     data = motor->motor_data;
     if (strcmp(which, "POS_KP") == 0) { data->position_pid.kp = *(const float *)value; }
@@ -601,6 +851,45 @@ static struct motor_device gm6020_yaw = {
     .set_para = gm6020_set_para,
 };
 
+//3507示例实例化，电机需设为 MIT 模式，CAN ID 和反馈 Master ID 均为 0x002
+static const dm3507_pid_config_t dm3507_1_pid_config = {
+    .position_pid = {
+        .kp = 20.0f, .ki = 0.0f, .kd = 0.0f,
+        .integral_limit = 0.0f,
+        .output_limit = DM3507_V_MAX,
+        .derivative_filter_alpha = 0.5f,
+        .deadband = 0.002f,
+        .integral_separation_threshold = 0.0f,
+        .variable_integration_threshold = 0.0f,
+    },
+    .velocity_pid = {
+        .kp = 0.15f, .ki = 0.0f, .kd = 0.0f,
+        .integral_limit = 1.0f,
+        .output_limit = DM3507_TORQUE_LIMIT_NM,
+        .derivative_filter_alpha = 0.5f,
+        .deadband = 0.05f,
+        .integral_separation_threshold = 20.0f,
+        .variable_integration_threshold = 10.0f,
+    },
+};
+
+static dm3507_data_t dm3507_1_data = {.pid_config = &dm3507_1_pid_config};
+
+static struct motor_device dm3507_1 = {
+    .motor_name = "DM3507_1",
+    .motor_id = DM3507_MASTER_ID,
+    .motor_data = &dm3507_1_data,
+    .init = dm3507_init,
+    .feedback_calculate = dm3507_feedback_calculate,
+    .send_enable_cmd = dm3507_enable,
+    .send_disable_cmd = dm3507_disable,
+    .send_ctrl_cmd = dm3507_send_ctrl_cmd,
+    .update = dm3507_update,
+    .set_target = dm3507_set_target,
+    .get_status = dm3507_get_status,
+    .set_para = dm3507_set_para,
+};
+
 
 static dm4310_data_t dm4310_pitch_data;
 
@@ -619,7 +908,7 @@ static struct motor_device dm4310_pitch = {
     .set_para = dm4310_set_para,
 };
 
-static struct motor_device *const motor_list[] = {&gm6020_pitch, &dm4310_pitch, &gm6020_yaw};
+static struct motor_device *const motor_list[] = {&gm6020_pitch, &dm4310_pitch, &dm3507_1, &gm6020_yaw};
 /* --------------------------- 信号发送与接收部分 --------------------------- */
 /* Build every byte of 0x1FF from the registered GM6020s on this CAN bus.
  * This prevents one motor's update from zeroing the other three control slots. */
@@ -685,8 +974,10 @@ void Motor_System_PowerOn_Init(void)
 {
     gm6020_pitch.init(&gm6020_pitch, CAN_GM6020_PITCH_ID, &hfdcan1, 0);
     gm6020_yaw.init(&gm6020_yaw, CAN_GM6020_YAW_ID, &hfdcan1, 0);
+    dm3507_1.init(&dm3507_1, DM3507_MASTER_ID, &hfdcan1, 0);
     gm6020_pitch.send_disable_cmd(&gm6020_pitch);
     gm6020_yaw.send_disable_cmd(&gm6020_yaw);
+    dm3507_1.send_disable_cmd(&dm3507_1);
 }
 
 void Motor_All_Update(void)
