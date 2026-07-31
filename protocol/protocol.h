@@ -19,6 +19,9 @@ struct protocol_data {
     uint8_t action;
 };
 
+typedef void (*protocol_frame_callback_t)(const struct protocol_data *data,
+                                          void *user_context);
+
 int protocol_pack(const struct protocol_data *data, uint8_t frame[20]);
 
 int protocol_unpack(const uint8_t frame[20],
@@ -37,5 +40,16 @@ int protocol_unpack(const uint8_t frame[20],
 int protocol_parse(const uint8_t *bytes,
                    uint16_t length,
                    struct protocol_data *data);
+
+/*
+ * Parse a byte stream and call callback once for every valid frame.
+ *
+ * This keeps the same internal framing state as protocol_parse(), but does not
+ * collapse multiple received frames into the last one.
+ */
+int protocol_parse_each(const uint8_t *bytes,
+                        uint16_t length,
+                        protocol_frame_callback_t callback,
+                        void *user_context);
 
 #endif

@@ -20,8 +20,7 @@
 #define UART10_RX_RING_SIZE 512U
 #define UART10_STATUS_QUERY_INTERVAL_MS 100U
 #define UART10_ACK_TIMEOUT_MS 2000U
-/* Set to 1U after USB-to-UART10 open-loop validation is complete. */
-#define UART10_REQUIRE_CONTROLLER_FEEDBACK 0U
+#define UART10_REQUIRE_CONTROLLER_FEEDBACK 1U
 
 enum uart10_motion_state {
     UART10_MOTION_WAIT_READY = 0,
@@ -42,18 +41,6 @@ static struct uart10_rx_ring uart10_rx;
 static struct machine_protocol_context uart10_protocol;
 static char uart10_command[MACHINE_PROTOCOL_TX_BUFFER_SIZE];
 
-static int uart_is_port(const struct uart_device *uart, const char *port_name)
-{
-    size_t port_name_length;
-
-    if (uart == NULL || uart->name == NULL || port_name == NULL) {
-        return 0;
-    }
-    port_name_length = strlen(port_name);
-    return strncmp(uart->name, port_name, port_name_length) == 0 &&
-           uart->name[port_name_length] == '_';
-}
-
 static int16_t roll_to_protocol_phi(float roll)
 {
     float raw_phi = roll * 10.0f;
@@ -64,30 +51,77 @@ static int16_t roll_to_protocol_phi(float roll)
     return (int16_t)(raw_phi - 0.5f);
 }
 
-static int set_seria_target(struct uart_device *uart, const float aim_pose[5])
+static void aim_pose_to_protocol_data(struct protocol_data *target)
+{
+    if (target == NULL) {
+        return;
+    }
+
+    target->x = aim_pose.x;
+    target->y = aim_pose.y;
+    target->z = aim_pose.z;
+    target->roll = roll_to_protocol_phi(aim_pose.roll);
+    target->action = aim_pose.action;
+}
+
+static int protocol_data_equal(const struct protocol_data *left,
+                               const struct protocol_data *right)
+{
+    if (left == NULL || right == NULL) {
+        return 0;
+    }
+
+    return left->x == right->x &&
+           left->y == right->y &&
+           left->z == right->z &&
+           left->roll == right->roll &&
+           left->action == right->action;
+}
+
+static int send_protocol_action(struct uart_device *uart,
+                                const struct protocol_data *target)
 {
     uint8_t protocol_frame[PROTOCOL_FRAME_SIZE];
-    struct protocol_data protocol_target;
-    struct uart_device *uart1;
-    uart1 = uart_get_device("uart1_dma");
-    if (uart == NULL || aim_pose == NULL || uart1 == NULL) {
+
+    if (uart == NULL || target == NULL) {
         LED_YELLOW_SET();
         return -1;
     }
-    if (uart_is_port(uart, "uart1")) {
-        protocol_target.x = aim_pose[0];
-        protocol_target.y = aim_pose[1];
-        protocol_target.z = aim_pose[2];
-        protocol_target.roll = roll_to_protocol_phi(aim_pose[3]);
-        protocol_target.action = aim_pose[4];
-        if (protocol_pack(&protocol_target, protocol_frame) != 0) {
-            LED_RED_SET();
-            return -1;
-        }
-        // LED_SKY_SET();
-        return uart1->uart_send_bytes(uart1, protocol_frame, PROTOCOL_FRAME_SIZE);
+
+    if (protocol_pack(target, protocol_frame) != 0) {
+        LED_RED_SET();
+        return -1;
     }
-    return -1;
+
+    return uart->uart_send_bytes(uart, protocol_frame, PROTOCOL_FRAME_SIZE);
+}
+
+static int send_uart10_motion(struct uart_device *uart10,
+                              const struct protocol_data *target,
+                              char command[MACHINE_PROTOCOL_TX_BUFFER_SIZE])
+{
+    float xyz[3];
+    int command_length;
+
+    if (uart10 == NULL || target == NULL || command == NULL) {
+        return -1;
+    }
+
+    xyz[0] = target->x;
+    xyz[1] = target->y;
+    xyz[2] = target->z;
+
+    command_length = machine_protocol_pack(xyz,
+                                           MACHINE_PROTOCOL_DEFAULT_FEED_MM_PER_MIN,
+                                           command,
+                                           MACHINE_PROTOCOL_TX_BUFFER_SIZE);
+    if (command_length <= 0) {
+        return -1;
+    }
+
+    return uart10->uart_send_bytes(uart10,
+                                   (const uint8_t *)command,
+                                   (uint16_t)command_length);
 }
 
 static void uart10_receive_callback(struct uart_device *device, const uint8_t *data,
@@ -178,9 +212,17 @@ void test_task(void)
     enum uart10_motion_state uart10_state = UART10_MOTION_WAIT_READY;
     uint32_t last_query_tick;
     uint32_t command_sent_tick = 0U;
-    float pending_xyz[3] = {0.0f, 0.0f, 0.0f};
-    float last_xyz[3] = {0.0f, 0.0f, 0.0f};
-    uint8_t target_pending = 0U;
+    uint8_t sequence_active = 0U;
+    uint16_t sequence_count = 0U;
+    uint16_t sequence_index = 0U;
+    uint32_t sequence_generation = 0U;
+    uint8_t legacy_target_pending = 0U;
+    uint8_t last_legacy_valid = 0U;
+    struct protocol_data action_to_send = {0};
+    struct protocol_data legacy_action = {0};
+    struct protocol_data last_legacy_action = {0};
+    struct protocol_data pending_legacy_action = {0};
+
     uart1 = uart_get_device("uart1_dma");
     uart10 = uart_get_device("uart10_dma");
     while (uart1 == NULL)
@@ -199,35 +241,16 @@ void test_task(void)
     machine_protocol_init(&uart10_protocol);
     uart10->uart_recv_callback = uart10_receive_callback;
     last_query_tick = osKernelGetTickCount() - UART10_STATUS_QUERY_INTERVAL_MS;
+    aim_pose_to_protocol_data(&last_legacy_action);
+    last_legacy_valid = 1U;
 
-    float aim_pose_array[5] = {0};
-    float last_aim_pose_array[5] = {0};
     for (;;) {
-        uint8_t aim_pose_changed;
-
-        aim_pose_array[0] = aim_pose.x;
-        aim_pose_array[1] = aim_pose.y;
-        aim_pose_array[2] = aim_pose.z;
-        aim_pose_array[3] = aim_pose.roll;
-        aim_pose_array[4] = aim_pose.action;
-        aim_pose_changed =
-            (memcmp(aim_pose_array, last_aim_pose_array, sizeof(aim_pose_array)) != 0) ? 1U : 0U;
-        if (aim_pose_changed != 0U) {
-            if (set_seria_target(uart1, aim_pose_array) == 0) {
-                LED_SKY_SET();
-            } else {
-                LED_RED_SET();
-            }
-        }
-        if ((UART10_REQUIRE_CONTROLLER_FEEDBACK == 0U && aim_pose_changed != 0U) ||
-            (UART10_REQUIRE_CONTROLLER_FEEDBACK != 0U &&
-             memcmp(aim_pose_array, last_xyz, sizeof(last_xyz)) != 0)) {
-            memcpy(pending_xyz, aim_pose_array, sizeof(pending_xyz));
-            memcpy(last_xyz, aim_pose_array, sizeof(last_xyz));
-            target_pending = 1U;
-        }
-        memcpy(last_aim_pose_array, aim_pose_array, sizeof(aim_pose_array));
         uint8_t received_byte;
+        uint32_t now;
+        action_sequence_state_t sequence_state;
+        uint32_t sequence_global_generation;
+        int32_t lock_state;
+
         while (uart10_receive_byte(&received_byte) != 0) {
             uint32_t events = machine_protocol_parse(&uart10_protocol, &received_byte, 1U);
             if (events != MACHINE_PROTOCOL_EVENT_NONE) {
@@ -238,7 +261,7 @@ void test_task(void)
             uart10_state = UART10_MOTION_FAULT;
             LED_RED_SET();
         }
-        uint32_t now = osKernelGetTickCount();
+        now = osKernelGetTickCount();
         if (uart10_state == UART10_MOTION_WAIT_ACK && (uint32_t)(now - command_sent_tick) >= UART10_ACK_TIMEOUT_MS) {
             uart10_state = UART10_MOTION_FAULT;
             LED_RED_SET();
@@ -252,25 +275,135 @@ void test_task(void)
                 last_query_tick = now;
             }
         }
-        if (target_pending != 0U &&
-            (UART10_REQUIRE_CONTROLLER_FEEDBACK == 0U ||
-             (uart10_state == UART10_MOTION_IDLE &&
-              uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE))) {
-            int command_length = machine_protocol_pack(pending_xyz,MACHINE_PROTOCOL_DEFAULT_FEED_MM_PER_MIN, uart10_command, sizeof(uart10_command));
-            if (command_length <= 0) {
-                if (UART10_REQUIRE_CONTROLLER_FEEDBACK != 0U) {
-                    uart10_state = UART10_MOTION_FAULT;
-                }
-                LED_RED_SET();
-            } else if (uart10->uart_send_bytes(uart10, (const uint8_t *)uart10_command,(uint16_t)command_length) == 0) {
-                target_pending = 0U;
-                if (UART10_REQUIRE_CONTROLLER_FEEDBACK != 0U) {
-                    command_sent_tick = now;
-                    uart10_state = UART10_MOTION_WAIT_ACK;
-                }
-                LED_PURPLE_SET();
+
+        lock_state = osKernelLock();
+        sequence_state = action_sequence.state;
+        sequence_global_generation = action_sequence.generation;
+        (void)osKernelRestoreLock(lock_state);
+
+        if (sequence_active != 0U &&
+            sequence_global_generation != sequence_generation &&
+            sequence_state != ACTION_SEQUENCE_STATE_RUNNING) {
+            sequence_active = 0U;
+            sequence_count = 0U;
+            sequence_index = 0U;
+            legacy_target_pending = 0U;
+            aim_pose_to_protocol_data(&last_legacy_action);
+            last_legacy_valid = 1U;
+        }
+
+        if (sequence_active == 0U && sequence_state == ACTION_SEQUENCE_STATE_READY) {
+            lock_state = osKernelLock();
+            if (action_sequence.state == ACTION_SEQUENCE_STATE_READY &&
+                action_sequence.count > 0U) {
+                action_sequence.state = ACTION_SEQUENCE_STATE_RUNNING;
+                action_sequence.active_index = 0U;
+                sequence_count = action_sequence.count;
+                sequence_generation = action_sequence.generation;
+                sequence_index = 0U;
+                sequence_active = 1U;
+            }
+            (void)osKernelRestoreLock(lock_state);
+
+            if (sequence_active != 0U) {
+                legacy_target_pending = 0U;
+                aim_pose_to_protocol_data(&last_legacy_action);
+                last_legacy_valid = 1U;
+                LED_GREEN_SET();
             }
         }
+
+        if (sequence_active != 0U && uart10_state == UART10_MOTION_FAULT) {
+            lock_state = osKernelLock();
+            if (action_sequence.state == ACTION_SEQUENCE_STATE_RUNNING) {
+                action_sequence.state = ACTION_SEQUENCE_STATE_ERROR;
+                action_sequence.generation++;
+            }
+            (void)osKernelRestoreLock(lock_state);
+            sequence_active = 0U;
+            LED_RED_SET();
+        }
+
+        if (sequence_active != 0U) {
+            if (sequence_index >= sequence_count) {
+                if (uart10_state == UART10_MOTION_IDLE) {
+                    lock_state = osKernelLock();
+                    if (action_sequence.state == ACTION_SEQUENCE_STATE_RUNNING) {
+                        action_sequence.active_index = action_sequence.count;
+                        action_sequence.state = ACTION_SEQUENCE_STATE_DONE;
+                        action_sequence.generation++;
+                    }
+                    (void)osKernelRestoreLock(lock_state);
+                    sequence_active = 0U;
+                    aim_pose_to_protocol_data(&last_legacy_action);
+                    last_legacy_valid = 1U;
+                    LED_GREEN_SET();
+                }
+            } else if (uart10_state == UART10_MOTION_IDLE &&
+                       uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE) {
+                uint8_t have_action = 0U;
+
+                lock_state = osKernelLock();
+                if (action_sequence.state == ACTION_SEQUENCE_STATE_RUNNING &&
+                    sequence_index < action_sequence.count) {
+                    action_to_send = action_sequence.frames[sequence_index];
+                    have_action = 1U;
+                }
+                (void)osKernelRestoreLock(lock_state);
+
+                if (have_action == 0U) {
+                    lock_state = osKernelLock();
+                    action_sequence.state = ACTION_SEQUENCE_STATE_ERROR;
+                    action_sequence.generation++;
+                    (void)osKernelRestoreLock(lock_state);
+                    sequence_active = 0U;
+                    LED_RED_SET();
+                } else if (send_protocol_action(uart1, &action_to_send) == 0 &&
+                           send_uart10_motion(uart10, &action_to_send, uart10_command) == 0) {
+                    sequence_index++;
+                    lock_state = osKernelLock();
+                    if (action_sequence.state == ACTION_SEQUENCE_STATE_RUNNING) {
+                        action_sequence.active_index = sequence_index;
+                    }
+                    (void)osKernelRestoreLock(lock_state);
+                    command_sent_tick = now;
+                    uart10_state = UART10_MOTION_WAIT_ACK;
+                    LED_PURPLE_SET();
+                } else {
+                    LED_RED_SET();
+                }
+            }
+        } else if (sequence_state == ACTION_SEQUENCE_STATE_IDLE ||
+                   sequence_state == ACTION_SEQUENCE_STATE_DONE ||
+                   sequence_state == ACTION_SEQUENCE_STATE_ERROR) {
+            aim_pose_to_protocol_data(&legacy_action);
+            if (last_legacy_valid == 0U ||
+                protocol_data_equal(&legacy_action, &last_legacy_action) == 0) {
+                if (send_protocol_action(uart1, &legacy_action) == 0) {
+                    LED_SKY_SET();
+                } else {
+                    LED_RED_SET();
+                }
+                pending_legacy_action = legacy_action;
+                legacy_target_pending = 1U;
+                last_legacy_action = legacy_action;
+                last_legacy_valid = 1U;
+            }
+
+            if (legacy_target_pending != 0U &&
+                uart10_state == UART10_MOTION_IDLE &&
+                uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE) {
+                if (send_uart10_motion(uart10, &pending_legacy_action, uart10_command) == 0) {
+                    legacy_target_pending = 0U;
+                    command_sent_tick = now;
+                    uart10_state = UART10_MOTION_WAIT_ACK;
+                    LED_PURPLE_SET();
+                } else {
+                    LED_RED_SET();
+                }
+            }
+        }
+
         osDelay(10U);
     }
 }

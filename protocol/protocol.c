@@ -6,6 +6,9 @@
 
 #include <string.h>
 
+static void protocol_store_last_frame(const struct protocol_data *frame,
+                                      void *user_context);
+
 static uint8_t protocol_checksum(const uint8_t *data, uint16_t length)
 {
     uint8_t checksum = 0U;
@@ -77,13 +80,37 @@ int protocol_parse(const uint8_t *bytes,
                    uint16_t length,
                    struct protocol_data *data)
 {
+    if (data == NULL) {
+        return -1;
+    }
+
+    return protocol_parse_each(bytes, length, protocol_store_last_frame, data);
+}
+
+static void protocol_store_last_frame(const struct protocol_data *frame,
+                                      void *user_context)
+{
+    struct protocol_data *data = (struct protocol_data *)user_context;
+
+    if (frame == NULL || data == NULL) {
+        return;
+    }
+
+    *data = *frame;
+}
+
+int protocol_parse_each(const uint8_t *bytes,
+                        uint16_t length,
+                        protocol_frame_callback_t callback,
+                        void *user_context)
+{
     static uint8_t frame[20];
     static uint16_t frame_position = 0U;
 
     struct protocol_data unpacked_data;
     int valid_frame_count = 0;
 
-    if (bytes == NULL || data == NULL) {
+    if (bytes == NULL || callback == NULL) {
         return -1;
     }
 
@@ -117,7 +144,7 @@ int protocol_parse(const uint8_t *bytes,
 
         if (frame_position == 20U) {
             if (protocol_unpack(frame, &unpacked_data) == 0) {
-                *data = unpacked_data;
+                callback(&unpacked_data, user_context);
                 valid_frame_count++;
             }
 

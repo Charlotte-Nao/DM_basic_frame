@@ -7,7 +7,20 @@
 
 #include <stdint.h>
 
+#include "../protocol/protocol.h"
+
 struct four_axis_robotic_arm;
+
+#define ACTION_SEQUENCE_MAX_COUNT 128U
+
+typedef enum {
+    ACTION_SEQUENCE_STATE_IDLE = 0,
+    ACTION_SEQUENCE_STATE_LOADING,
+    ACTION_SEQUENCE_STATE_READY,
+    ACTION_SEQUENCE_STATE_RUNNING,
+    ACTION_SEQUENCE_STATE_DONE,
+    ACTION_SEQUENCE_STATE_ERROR,
+} action_sequence_state_t;
 
 /* Shared IMU attitude.  The sensor task is the sole writer. */
 typedef struct {
@@ -26,9 +39,19 @@ typedef struct host_data {
     uint8_t action;
 } aim_pose_t;
 
+typedef struct {
+    struct protocol_data frames[ACTION_SEQUENCE_MAX_COUNT];
+    volatile uint16_t count;
+    volatile uint16_t active_index;
+    volatile action_sequence_state_t state;
+    volatile uint8_t overflow;
+    volatile uint32_t generation;
+} action_sequence_t;
+
 
 extern volatile global_data_t global_data;
 extern struct four_axis_robotic_arm arm;
 extern  volatile aim_pose_t aim_pose;
+extern action_sequence_t action_sequence;
 
 #endif //DM_GLOBAL_DATA_H
