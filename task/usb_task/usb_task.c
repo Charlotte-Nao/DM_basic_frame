@@ -12,7 +12,7 @@
 
 #define ACTION_SEQUENCE_START_MARKER 5
 #define ACTION_SEQUENCE_END_MARKER   8
-#define ACTION_SEQUENCE_LOAD_TIMEOUT_MS 3000U
+#define ACTION_SEQUENCE_LOAD_TIMEOUT_MS 30000U
 
 static uint32_t action_sequence_last_rx_tick;
 
