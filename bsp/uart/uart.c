@@ -35,7 +35,6 @@ struct uart_port_data {
     uint8_t *dma_rx_buffer;
     uint8_t *tx_buffer;
     uint16_t dma_last_position;
-    bool half_duplex;
 };
 
 struct uart_device_data {
@@ -51,7 +50,6 @@ static int uart_device_printf(struct uart_device *device, const char *format, ..
 static int uart_device_send_bytes(struct uart_device *device,
                                   const uint8_t *data,
                                   uint16_t length);
-static int uart_prepare_transmit(struct uart_device *device);
 
 #define DMA_BUFFER __attribute__((section(".dma_buffer"), aligned(32)))
 
@@ -74,7 +72,6 @@ static struct uart_port_data uart5_port = {
 static struct uart_port_data uart7_port = {
     .handle = &huart7, .dma_rx_buffer = uart7_dma_rx_buffer,
     .tx_buffer = uart7_dma_tx_buffer,
-    .half_duplex = true,
 };
 static struct uart_port_data uart10_port = {
     .handle = &huart10, .dma_rx_buffer = uart10_dma_rx_buffer,
@@ -141,38 +138,6 @@ static struct uart_port_data *uart_port_from_handle(UART_HandleTypeDef *handle)
 }
 
 
-static int uart_prepare_transmit(struct uart_device *device)
-{
-    struct uart_device_data *device_data;
-    struct uart_port_data *port;
-    UART_HandleTypeDef *handle;
-
-    if (device == NULL || device->priv_data == NULL) {
-        return UART_DEVICE_ERR_PARAM;
-    }
-
-    device_data = device->priv_data;
-    port = device_data->port;
-    handle = port->handle;
-
-    if (!port->half_duplex) {
-        return UART_DEVICE_OK;
-    }
-
-    if (handle->RxState != HAL_UART_STATE_READY) {
-        if (HAL_UART_AbortReceive(handle) != HAL_OK) {
-            return UART_DEVICE_ERR_HAL;
-        }
-    }
-
-    if (HAL_HalfDuplex_EnableTransmitter(handle) != HAL_OK) {
-        return UART_DEVICE_ERR_HAL;
-    }
-
-    return UART_DEVICE_OK;
-}
-
-
 static int uart_start_receive(struct uart_device *device)
 {
     struct uart_device_data *device_data;
@@ -195,12 +160,6 @@ static int uart_start_receive(struct uart_device *device)
         }
     }
 
-
-    if (port->half_duplex) {
-        if (HAL_HalfDuplex_EnableReceiver(handle) != HAL_OK) {
-            return UART_DEVICE_ERR_HAL;
-        }
-    }
 
     port->rx_owner = device;
 
@@ -259,7 +218,6 @@ static int uart_device_send_bytes(
     struct uart_device_data *device_data;
     struct uart_port_data *port;
     HAL_StatusTypeDef status;
-    int prepare_result;
 
     if (device == NULL ||
         device->priv_data == NULL ||
@@ -295,11 +253,6 @@ static int uart_device_send_bytes(
         memcpy(port->tx_buffer, data, length);
     }
 
-    prepare_result = uart_prepare_transmit(device);
-    if (prepare_result != UART_DEVICE_OK) {
-        return prepare_result;
-    }
-
     port->tx_owner = device;
 
     if (device_data->transfer_mode == UART_TRANSFER_IT) {
@@ -329,11 +282,6 @@ static int uart_device_send_bytes(
 
     if (status != HAL_OK) {
         port->tx_owner = NULL;
-
-        if (port->half_duplex) {
-            (void)uart_start_receive(device);
-        }
-
         return (status == HAL_BUSY)
                    ? UART_DEVICE_ERR_BUSY
                    : UART_DEVICE_ERR_HAL;
@@ -413,12 +361,6 @@ static void uart_dma_deliver(struct uart_port_data *port, uint16_t position)
     port->dma_last_position = (position == UART_DMA_RX_BUFFER_SIZE) ? 0U : position;
 }
 
-/**
- * Called only after the UART has completely shifted out the last stop bit.
- *
- * For UART7, this is the correct moment to release the single-wire bus and
- * return to receiver mode.
- */
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *handle)
 {
     struct uart_port_data *port;
@@ -431,9 +373,6 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *handle)
     device = port->tx_owner;
     if (device == NULL) {
         return;
-    }
-    if (port->half_duplex) {
-        (void)uart_start_receive(device);
     }
     port->tx_owner = NULL;
     if (device->uart_send_callback != NULL) {

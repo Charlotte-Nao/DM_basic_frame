@@ -28,6 +28,7 @@
 /* USER CODE BEGIN Includes */
 #include "../../task/all_task.h"
 #include "../../device/motor/motor.h"
+#include "../../application/global_data.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -77,13 +78,6 @@ const osThreadAttr_t test_attributes = {
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityHigh,
 };
-/* Definitions for servo */
-osThreadId_t servoHandle;
-const osThreadAttr_t servo_attributes = {
-  .name = "servo",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityHigh,
-};
 /* Definitions for vacuum */
 osThreadId_t vacuumHandle;
 const osThreadAttr_t vacuum_attributes = {
@@ -101,7 +95,6 @@ void seneor_task_entry(void *argument);
 void printf_entry(void *argument);
 void usb_entry(void *argument);
 void test_task_entry(void *argument);
-void servo_entry(void *argument);
 void vacuum_entry(void *argument);
 
 extern void MX_USB_DEVICE_Init(void);
@@ -143,7 +136,7 @@ void vApplicationMallocFailedHook(void)
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-
+  question_number_uart7_init();
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -174,9 +167,6 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of test */
   testHandle = osThreadNew(test_task_entry, NULL, &test_attributes);
-
-  /* creation of servo */
-  servoHandle = osThreadNew(servo_entry, NULL, &servo_attributes);
 
   /* creation of vacuum */
   vacuumHandle = osThreadNew(vacuum_entry, NULL, &vacuum_attributes);
@@ -267,25 +257,6 @@ void test_task_entry(void *argument)
     osDelay(1);
   }
   /* USER CODE END test_task_entry */
-}
-
-/* USER CODE BEGIN Header_servo_entry */
-/**
-* @brief Function implementing the servo thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_servo_entry */
-void servo_entry(void *argument)
-{
-  /* USER CODE BEGIN servo_entry */
-  servo_task();
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END servo_entry */
 }
 
 /* USER CODE BEGIN Header_vacuum_entry */

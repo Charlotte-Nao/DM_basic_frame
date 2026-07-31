@@ -53,5 +53,8 @@ extern volatile global_data_t global_data;
 extern struct four_axis_robotic_arm arm;
 extern  volatile aim_pose_t aim_pose;
 extern action_sequence_t action_sequence;
+extern volatile uint8_t question_number;
+
+void question_number_uart7_init(void);
 
 #endif //DM_GLOBAL_DATA_H

@@ -69,10 +69,6 @@ add_executable(${CMAKE_PROJECT_NAME}
         application/global_data.h
         task/printf_task/printf_task.c
         task/printf_task/printf_task.h
-        device/YB_SD15M/YB_SD15M.c
-        device/YB_SD15M/YB_SD15M.h
-        task/servo_task/servo_task.c
-        task/servo_task/servo_task.h
         dsp/calculation/revrse_calculation.c
         dsp/calculation/revrse_calculation.h
         dsp/calculation/positive_calculation.c
