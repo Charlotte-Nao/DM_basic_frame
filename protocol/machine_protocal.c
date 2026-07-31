@@ -126,7 +126,7 @@ int machine_protocol_pack(const float target_xyz[3], float feed_mm_per_min,
         return -1;
     }
     length = snprintf(command, command_capacity,
-                      "G21 G90 G94 G53 G1 X%.3f Y%.3f Z%.3f F%.1f\n",
+                      "G21 G90 G94 G1 X%.3f Y%.3f Z%.3f F%.0f\n",
                       target_xyz[0], target_xyz[1], target_xyz[2], feed_mm_per_min);
     if (length <= 0 || length >= (int)command_capacity) {
         return -1;

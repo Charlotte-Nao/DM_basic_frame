@@ -20,6 +20,8 @@
 #define UART10_RX_RING_SIZE 512U
 #define UART10_STATUS_QUERY_INTERVAL_MS 100U
 #define UART10_ACK_TIMEOUT_MS 2000U
+/* Set to 1U after USB-to-UART10 open-loop validation is complete. */
+#define UART10_REQUIRE_CONTROLLER_FEEDBACK 0U
 
 enum uart10_motion_state {
     UART10_MOTION_WAIT_READY = 0,
@@ -201,19 +203,25 @@ void test_task(void)
     float aim_pose_array[5] = {0};
     float last_aim_pose_array[5] = {0};
     for (;;) {
+        uint8_t aim_pose_changed;
+
         aim_pose_array[0] = aim_pose.x;
         aim_pose_array[1] = aim_pose.y;
         aim_pose_array[2] = aim_pose.z;
         aim_pose_array[3] = aim_pose.roll;
         aim_pose_array[4] = aim_pose.action;
-        if (memcmp(aim_pose_array, last_aim_pose_array, sizeof(aim_pose_array)) != 0) {
+        aim_pose_changed =
+            (memcmp(aim_pose_array, last_aim_pose_array, sizeof(aim_pose_array)) != 0) ? 1U : 0U;
+        if (aim_pose_changed != 0U) {
             if (set_seria_target(uart1, aim_pose_array) == 0) {
                 LED_SKY_SET();
             } else {
                 LED_RED_SET();
             }
         }
-        if (memcmp(aim_pose_array, last_xyz, sizeof(last_xyz)) != 0) {
+        if ((UART10_REQUIRE_CONTROLLER_FEEDBACK == 0U && aim_pose_changed != 0U) ||
+            (UART10_REQUIRE_CONTROLLER_FEEDBACK != 0U &&
+             memcmp(aim_pose_array, last_xyz, sizeof(last_xyz)) != 0)) {
             memcpy(pending_xyz, aim_pose_array, sizeof(pending_xyz));
             memcpy(last_xyz, aim_pose_array, sizeof(last_xyz));
             target_pending = 1U;
@@ -235,20 +243,31 @@ void test_task(void)
             uart10_state = UART10_MOTION_FAULT;
             LED_RED_SET();
         }
-        if ((uart10_state == UART10_MOTION_WAIT_READY || uart10_state == UART10_MOTION_WAIT_IDLE || uart10_state == UART10_MOTION_FAULT) && (uint32_t)(now - last_query_tick) >= UART10_STATUS_QUERY_INTERVAL_MS) {
-            // if (uart10_send_status_query(uart10) == 0) {
-            //     last_query_tick = now;
-            // }
+        if (UART10_REQUIRE_CONTROLLER_FEEDBACK != 0U &&
+            (uart10_state == UART10_MOTION_WAIT_READY ||
+             uart10_state == UART10_MOTION_WAIT_IDLE ||
+             uart10_state == UART10_MOTION_FAULT) &&
+            (uint32_t)(now - last_query_tick) >= UART10_STATUS_QUERY_INTERVAL_MS) {
+            if (uart10_send_status_query(uart10) == 0) {
+                last_query_tick = now;
+            }
         }
-        if (uart10_state == UART10_MOTION_IDLE && uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE && target_pending != 0U) {
+        if (target_pending != 0U &&
+            (UART10_REQUIRE_CONTROLLER_FEEDBACK == 0U ||
+             (uart10_state == UART10_MOTION_IDLE &&
+              uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE))) {
             int command_length = machine_protocol_pack(pending_xyz,MACHINE_PROTOCOL_DEFAULT_FEED_MM_PER_MIN, uart10_command, sizeof(uart10_command));
             if (command_length <= 0) {
-                uart10_state = UART10_MOTION_FAULT;
+                if (UART10_REQUIRE_CONTROLLER_FEEDBACK != 0U) {
+                    uart10_state = UART10_MOTION_FAULT;
+                }
                 LED_RED_SET();
             } else if (uart10->uart_send_bytes(uart10, (const uint8_t *)uart10_command,(uint16_t)command_length) == 0) {
                 target_pending = 0U;
-                command_sent_tick = now;
-                uart10_state = UART10_MOTION_WAIT_ACK;
+                if (UART10_REQUIRE_CONTROLLER_FEEDBACK != 0U) {
+                    command_sent_tick = now;
+                    uart10_state = UART10_MOTION_WAIT_ACK;
+                }
                 LED_PURPLE_SET();
             }
         }
