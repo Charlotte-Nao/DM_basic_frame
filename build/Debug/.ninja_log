@@ -102,3 +102,11 @@
 178	354	1785490978310880300	DM.elf	39bb7be5bca38fe8
 3	148	1785491075701665200	CMakeFiles/DM.dir/Core/Src/freertos.c.obj	c8407399e2bdfa28
 148	324	1785491075846671900	DM.elf	39bb7be5bca38fe8
+5	40	1785492489270805300	CMakeFiles/DM.dir/task/usb_task/usb_task.c.obj	d32048035b5f1eee
+6	142	1785492489271805300	CMakeFiles/DM.dir/Core/Src/freertos.c.obj	c8407399e2bdfa28
+6	34	1785492542635403400	CMakeFiles/DM.dir/task/printf_task/printf_task.c.obj	e672de61b70b9de5
+34	203	1785492542663403200	DM.elf	39bb7be5bca38fe8
+4	36	1785493204044631000	CMakeFiles/DM.dir/task/usb_task/usb_task.c.obj	d32048035b5f1eee
+4	36	1785493204044631000	CMakeFiles/DM.dir/task/printf_task/printf_task.c.obj	e672de61b70b9de5
+5	140	1785493204045631000	CMakeFiles/DM.dir/Core/Src/freertos.c.obj	c8407399e2bdfa28
+140	314	1785493204180632300	DM.elf	39bb7be5bca38fe8

@@ -4,85 +4,69 @@
 
 #include "printf_task.h"
 #include "cmsis_os2.h"
-#include "../../device/motor/motor.h"
 #include "../../bsp/uart/uart.h"
 #include "../../application/global_data.h"
 
-#define RAD_TO_DEG                    57.295779513082320876f
-#define DEG_TO_RAD                    0.01745329251994329577f
-
-
 void printf_task(void)
 {
-    struct motor_device *gm6020_pitch = motor_get_device("GM6020_PITCH");
-    struct motor_device *gm6020_yaw = motor_get_device("GM6020_YAW");
-    struct uart_device *uart1 = uart_get_device("uart1_dma");
+    struct uart_device *uart7 = uart_get_device("uart7_dma");
+    uint16_t next_print_index = 0U;
+    uint32_t last_generation = action_sequence.generation;
+    action_sequence_state_t last_state = action_sequence.state;
 
-    if (uart1 == NULL ) return;
+    if (uart7 == NULL) {
+        return;
+    }
 
-    float position_rad = 0.0f;
-    float velocity_rpm = 0.0f;
-    uint8_t temperature = 0U;
-    uint16_t encoder = 0U;
+    for (;;) {
+        struct protocol_data action;
+        uint16_t action_index = 0U;
+        uint8_t have_action = 0U;
+        uint32_t generation;
+        action_sequence_state_t state;
+        int32_t lock_state;
 
-    for (;;)
-    {
-        // if (gm6020_yaw == NULL) {(void)uart1->uart_printf(uart1,"GM6020_yaw未连接");}
-        // else
-        // {
-        //     gm6020_yaw->get_status(gm6020_yaw, "POS", &position_rad);
-        //     gm6020_yaw->get_status(gm6020_yaw, "VEL", &velocity_rpm);
-        //     gm6020_yaw->get_status(gm6020_yaw, "TEMP", &temperature);
-        //     gm6020_yaw->get_status(gm6020_yaw, "ENC", &encoder);
-        //
-        //     (void)uart1->uart_printf(uart1,
-        //     "GM6020_yaw: online=%u "
-        //     "pos=%.3f "
-        //     "rad vel=%.1f rpm "
-        //     "temp=%u  "
-        //     "encoder=%u\r\n",
-        //     motor_is_online(gm6020_yaw) ? 1U : 0U,
-        //     position_rad,
-        //     velocity_rpm,
-        //     (unsigned int)temperature,
-        //     (unsigned int)encoder
-        //     );
-        // }
-        //
-        // osDelay(200U);
-        //
-        // if (gm6020_pitch == NULL) {(void)uart1->uart_printf(uart1,"GM6020_pitch未连接");}
-        // else
-        // {
-        //     gm6020_pitch->get_status(gm6020_pitch, "POS", &position_rad);
-        //     gm6020_pitch->get_status(gm6020_pitch, "VEL", &velocity_rpm);
-        //     gm6020_pitch->get_status(gm6020_pitch, "TEMP", &temperature);
-        //     gm6020_pitch->get_status(gm6020_pitch, "ENC", &encoder);
-        //
-        //     (void)uart1->uart_printf(uart1,
-        //              "GM6020_pitch: online=%u "
-        //              "pos=%.3f "
-        //              "rad vel=%.1f rpm "
-        //              "temp=%u  "
-        //              "encoder=%u\r\n",
-        //              motor_is_online(gm6020_yaw) ? 1U : 0U,
-        //              position_rad, velocity_rpm,
-        //              (unsigned int)temperature,
-        //              (unsigned int)encoder);
-        //
-        // }
-        //
-        // osDelay(200U);
-        //
-        // (void)uart1->uart_printf(uart1,
-        // "roll:%.2f,pitch:%.2f,yaw:%.2f,temp:%u\r\n",
-        // global_data.imu_roll_rad * RAD_TO_DEG,
-        // global_data.imu_pitch_rad * RAD_TO_DEG,
-        // global_data.imu_yaw_rad * RAD_TO_DEG,
-        // temperature);
-        //
-        // osDelay(200U);
+        lock_state = osKernelLock();
+        generation = action_sequence.generation;
+        state = action_sequence.state;
 
-        osDelay(200U);
+        if (state == ACTION_SEQUENCE_STATE_LOADING &&
+            (last_state != ACTION_SEQUENCE_STATE_LOADING ||
+             generation != last_generation)) {
+            next_print_index = 0U;
+        } else if ((state == ACTION_SEQUENCE_STATE_READY ||
+                    state == ACTION_SEQUENCE_STATE_RUNNING) &&
+                   generation != last_generation &&
+                   !(last_state == ACTION_SEQUENCE_STATE_LOADING &&
+                     (uint32_t)(generation - last_generation) == 1U)) {
+            next_print_index = 0U;
+        } else if (action_sequence.count < next_print_index) {
+            next_print_index = 0U;
+        }
+
+        if (next_print_index < action_sequence.count) {
+            action_index = next_print_index;
+            action = action_sequence.frames[action_index];
+            have_action = 1U;
+        }
+
+        last_generation = generation;
+        last_state = state;
+        (void)osKernelRestoreLock(lock_state);
+
+        if (have_action != 0U &&
+            uart7->uart_printf(
+                uart7,
+                "ACTION[%u] x=%.3f y=%.3f z=%.3f roll=%.1f action=%u\r\n",
+                (unsigned int)action_index,
+                (double)action.x,
+                (double)action.y,
+                (double)action.z,
+                (double)action.roll / 10.0,
+                (unsigned int)action.action) == 0) {
+            next_print_index++;
+        }
+
+        osDelay(1U);
     }
 }
