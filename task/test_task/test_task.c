@@ -20,6 +20,7 @@
 #define UART10_RX_RING_SIZE 512U
 #define UART10_STATUS_QUERY_INTERVAL_MS 100U
 #define UART10_ACK_TIMEOUT_MS 2000U
+#define UART10_IDLE_SETTLE_MS 500U
 #define UART10_REQUIRE_CONTROLLER_FEEDBACK 1U
 
 enum uart10_motion_state {
@@ -163,7 +164,9 @@ static int uart10_receive_byte(uint8_t *byte)
 }
 
 static void uart10_handle_event(enum uart10_motion_state *motion_state,
-                                const struct machine_protocol_context *protocol, uint32_t events)
+                                const struct machine_protocol_context *protocol,
+                                uint32_t events,
+                                uint32_t *idle_detected_tick)
 {
     if ((events & (MACHINE_PROTOCOL_EVENT_ERROR | MACHINE_PROTOCOL_EVENT_ALARM)) != 0U) {
         *motion_state = UART10_MOTION_FAULT;
@@ -191,6 +194,9 @@ static void uart10_handle_event(enum uart10_motion_state *motion_state,
     } else if (protocol->controller_state == MACHINE_PROTOCOL_STATE_IDLE) {
         if (*motion_state == UART10_MOTION_WAIT_READY || *motion_state == UART10_MOTION_WAIT_IDLE) {
             *motion_state = UART10_MOTION_IDLE;
+            if (idle_detected_tick != NULL) {
+                *idle_detected_tick = osKernelGetTickCount();
+            }
         }
     } else if (*motion_state == UART10_MOTION_IDLE) {
         *motion_state = UART10_MOTION_WAIT_READY;
@@ -212,6 +218,7 @@ void test_task(void)
     enum uart10_motion_state uart10_state = UART10_MOTION_WAIT_READY;
     uint32_t last_query_tick;
     uint32_t command_sent_tick = 0U;
+    uint32_t idle_detected_tick = 0U;
     uint8_t sequence_active = 0U;
     uint16_t sequence_count = 0U;
     uint16_t sequence_index = 0U;
@@ -254,7 +261,10 @@ void test_task(void)
         while (uart10_receive_byte(&received_byte) != 0) {
             uint32_t events = machine_protocol_parse(&uart10_protocol, &received_byte, 1U);
             if (events != MACHINE_PROTOCOL_EVENT_NONE) {
-                uart10_handle_event(&uart10_state, &uart10_protocol, events);
+                uart10_handle_event(&uart10_state,
+                                    &uart10_protocol,
+                                    events,
+                                    &idle_detected_tick);
             }
         }
         if (uart10_rx.overflow != 0U) {
@@ -340,7 +350,8 @@ void test_task(void)
                     LED_GREEN_SET();
                 }
             } else if (uart10_state == UART10_MOTION_IDLE &&
-                       uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE) {
+                       uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE &&
+                       (uint32_t)(now - idle_detected_tick) >= UART10_IDLE_SETTLE_MS) {
                 uint8_t have_action = 0U;
 
                 lock_state = osKernelLock();
@@ -392,7 +403,8 @@ void test_task(void)
 
             if (legacy_target_pending != 0U &&
                 uart10_state == UART10_MOTION_IDLE &&
-                uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE) {
+                uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE &&
+                (uint32_t)(now - idle_detected_tick) >= UART10_IDLE_SETTLE_MS) {
                 if (send_uart10_motion(uart10, &pending_legacy_action, uart10_command) == 0) {
                     legacy_target_pending = 0U;
                     command_sent_tick = now;
