@@ -13,6 +13,7 @@
 #include "../../device/vacuum/vacuum.h"
 #include "../../application/global_data.h"
 #include "../../bsp/LED/LED.h"
+#include "../../bsp/pwm/pwm.h"
 #include "../../bsp/uart/uart.h"
 #include "../../protocol/protocol.h"
 #include "../../protocol/machine_protocal.h"
@@ -21,6 +22,7 @@
 #define UART10_STATUS_QUERY_INTERVAL_MS 100U
 #define UART10_ACK_TIMEOUT_MS 2000U
 #define UART10_IDLE_SETTLE_MS 500U
+#define FINISH_PWM_RESET_MS 2000U
 #define UART10_REQUIRE_CONTROLLER_FEEDBACK 1U
 
 enum uart10_motion_state {
@@ -219,7 +221,9 @@ void test_task(void)
     uint32_t last_query_tick;
     uint32_t command_sent_tick = 0U;
     uint32_t idle_detected_tick = 0U;
+    uint32_t finish_pwm_reset_tick = 0U;
     uint8_t sequence_active = 0U;
+    uint8_t finish_pwm_reset_active = 0U;
     uint16_t sequence_count = 0U;
     uint16_t sequence_index = 0U;
     uint32_t sequence_generation = 0U;
@@ -286,6 +290,12 @@ void test_task(void)
             }
         }
 
+        if (finish_pwm_reset_active != 0U &&
+            (uint32_t)(now - finish_pwm_reset_tick) >= FINISH_PWM_RESET_MS) {
+            pwm_set_pulse_us(PWM_CHANNEL_1, 20000U);
+            finish_pwm_reset_active = 0U;
+        }
+
         lock_state = osKernelLock();
         sequence_state = action_sequence.state;
         sequence_global_generation = action_sequence.generation;
@@ -302,7 +312,9 @@ void test_task(void)
             last_legacy_valid = 1U;
         }
 
-        if (sequence_active == 0U && sequence_state == ACTION_SEQUENCE_STATE_READY) {
+        if (finish_pwm_reset_active == 0U &&
+            sequence_active == 0U &&
+            sequence_state == ACTION_SEQUENCE_STATE_READY) {
             lock_state = osKernelLock();
             if (action_sequence.state == ACTION_SEQUENCE_STATE_READY &&
                 action_sequence.count > 0U) {
@@ -347,7 +359,9 @@ void test_task(void)
                     sequence_active = 0U;
                     aim_pose_to_protocol_data(&last_legacy_action);
                     last_legacy_valid = 1U;
-                    LED_GREEN_SET();
+                    pwm_set_pulse_us(PWM_CHANNEL_1, 0U);
+                    finish_pwm_reset_tick = now;
+                    finish_pwm_reset_active = 1U;
                 }
             } else if (uart10_state == UART10_MOTION_IDLE &&
                        uart10_protocol.controller_state == MACHINE_PROTOCOL_STATE_IDLE &&
@@ -384,9 +398,10 @@ void test_task(void)
                     LED_RED_SET();
                 }
             }
-        } else if (sequence_state == ACTION_SEQUENCE_STATE_IDLE ||
-                   sequence_state == ACTION_SEQUENCE_STATE_DONE ||
-                   sequence_state == ACTION_SEQUENCE_STATE_ERROR) {
+        } else if (finish_pwm_reset_active == 0U &&
+                   (sequence_state == ACTION_SEQUENCE_STATE_IDLE ||
+                    sequence_state == ACTION_SEQUENCE_STATE_DONE ||
+                    sequence_state == ACTION_SEQUENCE_STATE_ERROR)) {
             aim_pose_to_protocol_data(&legacy_action);
             if (last_legacy_valid == 0U ||
                 protocol_data_equal(&legacy_action, &last_legacy_action) == 0) {

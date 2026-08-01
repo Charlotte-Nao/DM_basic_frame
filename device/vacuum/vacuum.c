@@ -194,7 +194,7 @@ void Vacuum_System_PowerOn_Init(void)
         vacuum_list[index]->init(vacuum_list[index]);
     }
 
-    pwm_power_enable();
+    // pwm_power_enable();
 }
 
 void Vacuum_System_PowerOff(void)

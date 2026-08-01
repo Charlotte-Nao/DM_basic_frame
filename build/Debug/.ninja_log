@@ -190,3 +190,14 @@
 3	144	1785558364357440000	CMakeFiles/DM.dir/Core/Src/freertos.c.obj	c8407399e2bdfa28
 3	158	1785558364357440000	CMakeFiles/DM.dir/task/sensor_task/sensor_task.c.obj	47035c28c3884c1d
 158	332	1785558364512439300	DM.elf	39bb7be5bca38fe8
+4	49	1785560905960451500	CMakeFiles/DM.dir/task/test_task/test_task.c.obj	ce935f719d39e103
+4	151	1785560905960451500	CMakeFiles/DM.dir/Core/Src/main.c.obj	7b70f89a97029fe4
+151	356	1785560906107454100	DM.elf	39bb7be5bca38fe8
+6	51	1785561844689294900	CMakeFiles/DM.dir/task/test_task/test_task.c.obj	ce935f719d39e103
+51	225	1785561844734295700	DM.elf	39bb7be5bca38fe8
+3	136	1785561996278810800	CMakeFiles/DM.dir/Core/Src/main.c.obj	7b70f89a97029fe4
+136	341	1785561996412813000	DM.elf	39bb7be5bca38fe8
+3	136	1785562140954211500	CMakeFiles/DM.dir/device/vacuum/vacuum.c.obj	4a702dab21248cf3
+136	319	1785562141087213700	DM.elf	39bb7be5bca38fe8
+2	21	1785562358288817300	CMakeFiles/DM.dir/task/vacuum_task/vacuum_task.c.obj	db80a2811c35a91
+21	195	1785562358307817600	DM.elf	39bb7be5bca38fe8

@@ -4,10 +4,12 @@
 
 #include "vacuum_task.h"
 #include <cmsis_os2.h>
+#include "../../bsp/pwm/pwm.h"
 
 void vacuum_task(void)
 {
-    Vacuum_System_PowerOn_Init();
+    pwm_power_enable();
+    pwm_set_pulse_us(PWM_CHANNEL_1, 20000U);
     for (;;)
     {
         Vacuum_All_Update();
