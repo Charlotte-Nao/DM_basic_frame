@@ -208,6 +208,7 @@ void usb_task(void)
                 question_tx_length
             ) == USB_DEVICE_OK) {
             question_number_uart7_consume_ascii(question_tx_length);
+            LED_PINK_SET();
         }
 
         action_sequence_monitor_timeout();
