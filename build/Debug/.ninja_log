@@ -183,3 +183,10 @@
 38	210	1785541130200313700	DM.elf	39bb7be5bca38fe8
 3	38	1785543796116971800	CMakeFiles/DM.dir/task/test_task/test_task.c.obj	ce935f719d39e103
 38	209	1785543796151980700	DM.elf	39bb7be5bca38fe8
+3	22	1785558364357440000	CMakeFiles/DM.dir/task/printf_task/printf_task.c.obj	e672de61b70b9de5
+3	24	1785558364357440000	CMakeFiles/DM.dir/application/global_data.c.obj	2d9f7fb1ad3aa8a6
+3	25	1785558364357440000	CMakeFiles/DM.dir/task/usb_task/usb_task.c.obj	d32048035b5f1eee
+2	51	1785558364356440000	CMakeFiles/DM.dir/task/test_task/test_task.c.obj	ce935f719d39e103
+3	144	1785558364357440000	CMakeFiles/DM.dir/Core/Src/freertos.c.obj	c8407399e2bdfa28
+3	158	1785558364357440000	CMakeFiles/DM.dir/task/sensor_task/sensor_task.c.obj	47035c28c3884c1d
+158	332	1785558364512439300	DM.elf	39bb7be5bca38fe8

@@ -54,18 +54,18 @@ void printf_task(void)
         last_state = state;
         (void)osKernelRestoreLock(lock_state);
 
-        if (have_action != 0U &&
-            uart7->uart_printf(
-                uart7,
-                "ACTION[%u] x=%.3f y=%.3f z=%.3f roll=%.1f action=%u\r\n",
-                (unsigned int)action_index,
-                (double)action.x,
-                (double)action.y,
-                (double)action.z,
-                (double)action.roll / 10.0,
-                (unsigned int)action.action) == 0) {
-            next_print_index++;
-        }
+        // if (have_action != 0U &&
+        //     uart7->uart_printf(
+        //         uart7,
+        //         "ACTION[%u] x=%.3f y=%.3f z=%.3f roll=%.1f action=%u\r\n",
+        //         (unsigned int)action_index,
+        //         (double)action.x,
+        //         (double)action.y,
+        //         (double)action.z,
+        //         (double)action.roll / 10.0,
+        //         (unsigned int)action.action) == 0) {
+        //     next_print_index++;
+        // }
 
         osDelay(1U);
     }

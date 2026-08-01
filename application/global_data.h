@@ -56,5 +56,7 @@ extern action_sequence_t action_sequence;
 extern volatile uint8_t question_number;
 
 void question_number_uart7_init(void);
+uint16_t question_number_uart7_copy_ascii(uint8_t *data, uint16_t max_length);
+void question_number_uart7_consume_ascii(uint16_t length);
 
 #endif //DM_GLOBAL_DATA_H

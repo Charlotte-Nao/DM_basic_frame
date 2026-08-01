@@ -174,6 +174,8 @@ void usb_task(void)
 {
     struct usb_device *usb;
     uint8_t rx_buffer[128];
+    uint8_t question_tx_buffer[64];
+    uint16_t question_tx_length;
     int result;
 
     usb = usb_get_device("usb_cdc");
@@ -194,6 +196,20 @@ void usb_task(void)
                                       handle_protocol_frame,
                                       NULL);
         }
+
+        question_tx_length = question_number_uart7_copy_ascii(
+            question_tx_buffer,
+            sizeof(question_tx_buffer)
+        );
+        if (question_tx_length > 0U &&
+            usb->usb_send_bytes(
+                usb,
+                question_tx_buffer,
+                question_tx_length
+            ) == USB_DEVICE_OK) {
+            question_number_uart7_consume_ascii(question_tx_length);
+        }
+
         action_sequence_monitor_timeout();
         osDelay(1U);
     }
